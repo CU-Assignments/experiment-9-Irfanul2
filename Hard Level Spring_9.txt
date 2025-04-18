@@ -1,0 +1,123 @@
+Hard Level: Spring + Hibernate Banking System with Transactions
+1. Account.java
+
+import jakarta.persistence.*;
+
+@Entity
+public class Account {
+    @Id
+    private int id;
+    private String owner;
+    private double balance;
+
+    // Getters & Setters
+}
+2. Transaction.java
+
+import jakarta.persistence.*;
+import java.util.Date;
+
+@Entity
+public class Transaction {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int id;
+
+    private int fromAccount;
+    private int toAccount;
+    private double amount;
+    private Date date;
+
+    // Getters & Setters
+}
+
+3. Spring + Hibernate Config (AppConfig.java)
+
+import org.springframework.context.annotation.*;
+import org.springframework.orm.hibernate5.HibernateTransactionManager;
+import org.springframework.orm.hibernate5.LocalSessionFactoryBean;
+
+import javax.sql.DataSource;
+import com.zaxxer.hikari.HikariDataSource;
+
+@Configuration
+@EnableTransactionManagement
+public class AppConfig {
+
+    @Bean
+    public DataSource dataSource() {
+        HikariDataSource ds = new HikariDataSource();
+        ds.setJdbcUrl("jdbc:mysql://localhost:3306/yourdb");
+        ds.setUsername("root");
+        ds.setPassword("password");
+        return ds;
+    }
+
+    @Bean
+    public LocalSessionFactoryBean sessionFactory() {
+        LocalSessionFactoryBean sessionFactory = new LocalSessionFactoryBean();
+        sessionFactory.setDataSource(dataSource());
+        sessionFactory.setPackagesToScan("your.package");
+        return sessionFactory;
+    }
+
+    @Bean
+    public HibernateTransactionManager txManager() {
+        HibernateTransactionManager tx = new HibernateTransactionManager();
+        tx.setSessionFactory(sessionFactory().getObject());
+        return tx;
+    }
+}
+
+4. BankService.java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.hibernate.SessionFactory;
+
+@Service
+public class BankService {
+
+    @Autowired
+    private SessionFactory sessionFactory;
+
+    @Transactional
+    public void transferMoney(int fromId, int toId, double amount) {
+        var session = sessionFactory.getCurrentSession();
+
+        Account from = session.get(Account.class, fromId);
+        Account to = session.get(Account.class, toId);
+
+        if (from.getBalance() < amount) {
+            throw new RuntimeException("Insufficient balance");
+        }
+
+        from.setBalance(from.getBalance() - amount);
+        to.setBalance(to.getBalance() + amount);
+
+        Transaction txn = new Transaction();
+        txn.setFromAccount(fromId);
+        txn.setToAccount(toId);
+        txn.setAmount(amount);
+        txn.setDate(new java.util.Date());
+        session.save(txn);
+    }
+}
+
+5. MainApp.java
+
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+public class MainApp {
+    public static void main(String[] args) {
+        var context = new AnnotationConfigApplicationContext(AppConfig.class);
+        BankService bankService = context.getBean(BankService.class);
+
+        try {
+            bankService.transferMoney(1, 2, 100.0);
+            System.out.println("Transfer successful.");
+        } catch (Exception e) {
+            System.out.println("Transfer failed: " + e.getMessage());
+        }
+    }
+}
